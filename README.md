@@ -13,7 +13,9 @@ An F1 race-weekend app for Grandad's Huawei P30 Pro. It is a web app: installed 
 
 ## Putting it on Grandad's phone
 
-1. On his phone, open **Chrome** and go to the app's address (see "Where it lives" below).
+**The app's address: https://jdonnelly84.github.io/pitwall/** (GitHub Pages, free; code at https://github.com/jdonnelly84/pitwall)
+
+1. On his phone, open **Chrome** and go to that address.
 2. Tap the **⋮** menu (top right), then **Install app** (or **Add to Home screen**), then **Install**.
 3. The red Pit Wall icon appears on his home screen. From then on he just taps it.
 
@@ -38,7 +40,7 @@ Text too small? Tap the gear icon → **Text size → Extra large**.
 ## Changing the app
 
 - `index.html`, `app.css`, `app.js`: the whole app (plain HTML, CSS and JavaScript, no build step). `sw.js` keeps it on the phone so it opens offline. `manifest.webmanifest` + `icons/` make it installable.
-- Preview on this computer: `python serve.py`, then open http://localhost:8080 (narrow the window to phone width).
+- Preview on this computer: `python serve.py`, then open http://localhost:8080 (narrow the window to phone width). The app keeps itself on the device, so after an edit reload twice, or use `python serve.py 8091` for a clean start.
 - Test the live screen any time by replaying a past session: open `http://localhost:8080/?at=2026-11-22T05:05:00Z&demo=live#/live` (`at` sets the clock; `demo=live` treats that session as running).
 - Publish a change: double-click `publish.bat`. Grandad's phone picks up the new version the next time he opens the app (it may take two launches).
 
