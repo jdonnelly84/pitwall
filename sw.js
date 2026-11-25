@@ -1,6 +1,6 @@
 // Pit Wall service worker: keeps the app itself on the phone so it opens instantly and offline.
 // Bump VERSION whenever the app files change; the phone picks the new version up on its next launch.
-const VERSION = 'pw-1.0.0';
+const VERSION = 'pw-20261125-144307';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 const FONT = 'pw-font-1';

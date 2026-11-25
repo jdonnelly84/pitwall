@@ -89,7 +89,7 @@ function queuedFetch(url) {
   const go = () => {
     // never let a slow service hold a screen up: give up after 15 s and use the saved copy
     const ac = typeof AbortController === 'function' ? new AbortController() : null;
-    const timer = ac && setTimeout(() => ac.abort(), 15000);
+    const timer = ac && setTimeout(() => ac.abort(), q ? 12000 : 8000);
     return fetch(url, { credentials: 'omit', cache: 'no-store', signal: ac ? ac.signal : undefined })
       .finally(() => timer && clearTimeout(timer));
   };
@@ -170,6 +170,15 @@ function makeCtx(force) {
       catch (e) { if (c) return c.data; throw e; }
     },
     async opt(url, ttl) { try { return await ctx.get(url, ttl); } catch (e) { return null; } },
+    // Optional extras (weather, circuit maps, news): never hold the screen up for them. If nothing is
+    // saved yet, fetch in the background and fill them in on the second pass.
+    async extra(url, ttl) {
+      const c = await readCache(url);
+      if (c && !force) { if (Date.now() - c.t >= ttl) stale.add(url); return c.data; }
+      net(url).catch(() => {});
+      stale.add(url);
+      return c ? c.data : null;
+    },
     async savedAt(url) { const c = await readCache(url); return c ? c.t : 0; },
   };
   return ctx;
@@ -328,7 +337,7 @@ async function forecast(ctx, race) {
   if (race.end < now() || race.start - now() > 14 * D || isNaN(race.lat)) return null;
   const day = t => new Date(t).toISOString().slice(0, 10);
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${race.lat}&longitude=${race.long}&daily=weather_code,temperature_2m_max,precipitation_probability_max&timezone=auto&start_date=${day(race.start - D)}&end_date=${day(race.end + D)}`;
-  const d = await ctx.opt(url, 3 * H);
+  const d = await ctx.extra(url, 3 * H);
   if (!d || !d.daily) return null;
   const want = new Set(race.sessions.map(s => new Date(s.start + (d.utc_offset_seconds || 0) * 1000).toISOString().slice(0, 10)));
   return d.daily.time.map((t, i) => ({ t, code: d.daily.weather_code[i], max: d.daily.temperature_2m_max[i], rain: d.daily.precipitation_probability_max[i] }))
@@ -502,7 +511,7 @@ views.home = async ctx => {
   }
 
   // News
-  const news = await ctx.opt(`${E}/news?limit=12`, 20 * MIN);
+  const news = await ctx.extra(`${E}/news?limit=12`, 20 * MIN);
   const arts = news && news.articles ? news.articles.filter(a => a.headline) : [];
   if (arts.length) {
     html += sec('Latest news', '#/news', 'More news');
@@ -600,9 +609,9 @@ async function raceInfo(ctx, race, meeting, liveHere) {
 
   // circuit
   html += sec('Circuit');
-  const map = meeting ? await ctx.opt(`https://api.multiviewer.app/api/v1/circuits/${meeting.circuit_key}/${race.season}`, 30 * D) : null;
+  const map = meeting ? await ctx.extra(`https://api.multiviewer.app/api/v1/circuits/${meeting.circuit_key}/${race.season}`, 30 * D) : null;
   const svg = trackSvg(map);
-  const prev = await ctx.opt(`${J}/${race.season - 1}/circuits/${race.circuitId}/results/1.json`, 30 * D);
+  const prev = await ctx.extra(`${J}/${race.season - 1}/circuits/${race.circuitId}/results/1.json`, 30 * D);
   const pr = prev && prev.MRData.RaceTable.Races[0];
   const facts = [
     ['Circuit', race.circuit], ['Location', `${race.locality}, ${race.country}`],
@@ -1074,14 +1083,24 @@ async function render(opts = {}) {
   paint(html, isNew ? (restore != null ? restore : opts.replace ? null : 0) : null);
   updateStatus();
   // second pass: refresh anything that was out of date, redraw only if it changed
+  // each refreshed piece redraws as soon as it arrives, so one slow service never holds up the rest
   if (ctx.stale.size) {
-    await Promise.allSettled([...ctx.stale].map(u => net(u)));
-    if (token !== routeToken) return;
-    const ctx2 = makeCtx(false);
-    try { html = await views[r.name](ctx2, r.args); } catch (e) { return; }
-    if (token !== routeToken) return;
-    paint(html, null);
-    updateStatus();
+    let queued = false, running = false, again = false;
+    const redraw = async () => {
+      if (running) { again = true; return; }
+      running = true;
+      do {
+        again = false;
+        if (token !== routeToken) break;
+        try {
+          const h2 = await views[r.name](makeCtx(false), r.args);
+          if (token === routeToken) { paint(h2, null); updateStatus(); }
+        } catch (e) { /* keep what is on screen */ }
+      } while (again);
+      running = false;
+    };
+    const kick = () => { if (queued) return; queued = true; setTimeout(() => { queued = false; redraw(); }, 120); };
+    for (const u of ctx.stale) net(u).then(kick, () => {});
   }
 }
 addEventListener('scroll', () => { scrollPos[currentRoute] = window.scrollY; }, { passive: true });
